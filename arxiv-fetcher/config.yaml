@@ -1,0 +1,67 @@
+# arXiv Daily Fetcher 简化配置
+# 只需提供领域名 + 少量关键词即可
+
+interests:
+  - name: "催化与表面科学"
+    keywords:
+      - "heterogeneous catalysis"
+      - "DFT"
+      - "catalyst"
+      - "surface science"
+      - "adsorption"
+      - "transition state"
+      - "microkinetic"
+      - "H2O2"
+      - "hydrogen peroxide"
+
+  - name: "强化学习与AI"
+    keywords:
+      - "reinforcement learning"
+      - "deep reinforcement learning"
+      - "PPO"
+      - "policy gradient"
+      - "GNN"
+      - "graph neural network"
+      - "equivariant neural network"
+      - "material discovery"
+      - "inverse design"
+
+  - name: "全局优化与蒙特卡洛"
+    keywords:
+      - "global optimization"
+      - "basin hopping"
+      - "genetic algorithm"
+      - "particle swarm optimization"
+      - "stochastic surface walking"
+      - "Monte Carlo"
+      - "kinetic Monte Carlo"
+      - "Metropolis"
+
+  - name: "反应动力学"
+    keywords:
+      - "reaction kinetics"
+      - "reaction mechanism"
+      - "rate constant"
+      - "activation energy"
+      - "transition state theory"
+      - "reaction network"
+      - "microkinetic modeling"
+
+obsidian:
+  vault_path: "D:\\ECUST\\Filend's Knowledge Base"
+  target_folder: "Papers"
+  tag_prefix: "paper"
+
+fetch:
+  max_results: 20
+  days_back: 365
+  pause_between_requests: 10
+
+llm:
+  enabled: true
+  provider: "openai"
+  api_key: "Your api key here"
+  api_base: "https://api.deepseek.com/v1"
+  model: "deepseek-chat"
+  max_tokens: 4000
+  temperature: 0.3
