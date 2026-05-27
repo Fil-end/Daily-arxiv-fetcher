@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """
-arXiv Daily Fetcher v2 — 自动抓取 & AI 深度总结 & Obsidian 知识图谱导入.
+arXiv Daily Fetcher v3 — 自动抓取 & AI 深度总结 & Obsidian 知识图谱导入.
 
 用法:
     python arxiv_daily.py                     # 默认 config.yaml
     python arxiv_daily.py --dry-run           # 预览不写文件
+    python arxiv_daily.py --max-results 10    # 每个领域最多抓取 N 篇
+    python arxiv_daily.py --days-back 30      # 限定最近 N 天的论文
 """
-import argparse, json, os, re, sys, time, unicodedata, urllib.parse
+import argparse, json, os, re, sys, time, urllib.parse
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -14,11 +16,16 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 import feedparser, yaml
 
-feedparser.USER_AGENT = "arXivDailyFetcher/2.0 (mailto:researcher@example.com)"
+feedparser.USER_AGENT = "arXivDailyFetcher/3.0 (mailto:researcher@example.com)"
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_CONFIG = SCRIPT_DIR / "config.yaml"
 ARXIV_API = "https://export.arxiv.org/api/query"
+
+# ── 以下参数可直接在命令行覆盖，无需写在 config.yaml 中 ──
+DEFAULT_MAX_RESULTS = 5
+DEFAULT_DAYS_BACK = 730
+DEFAULT_PAUSE_SECONDS = 10
 
 # ──────────────────────────────────────────────
 # 1. 配置 / 历史
@@ -38,12 +45,13 @@ def save_history(path, data):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 # ──────────────────────────────────────────────
-# 2. arXiv 查询 (纯关键词搜索)
+# 2. arXiv 查询 (关键词分批)
 # ──────────────────────────────────────────────
-def build_query(interest):
-    kws = interest.get("keywords", [])
+KEYWORDS_PER_BATCH = 3  # arXiv API 限制，每批关键词数不宜过多
+
+def build_query(keywords):
     parts = []
-    for kw in kws:
+    for kw in keywords:
         safe = kw.replace('"', "").replace("(", "").replace(")", "")
         if " " in safe:
             parts.append(f'all:"{safe}"')
@@ -51,25 +59,56 @@ def build_query(interest):
             parts.append(f"all:{safe}")
     return " OR ".join(parts)
 
-def query_arxiv(interest, config):
-    fetch_cfg = config["fetch"]
-    query = build_query(interest)
-    params = {
-        "search_query": query,
-        "start": 0,
-        "max_results": fetch_cfg.get("max_results", 20),
-        "sortBy": "submittedDate",
-        "sortOrder": "descending",
-    }
-    url = f"{ARXIV_API}?{urllib.parse.urlencode(params)}"
-    print(f"  [arXiv] {interest['name']}: {len(interest.get('keywords',[]))} keywords → {min(params['max_results'],100)} results")
-    resp = feedparser.parse(url)
-    status = resp.get("status")
-    if status is not None and status >= 400:
-        print(f"  [WARNING] arXiv returned HTTP {status}")
-    entries = resp.get("entries", [])
-    print(f"  [arXiv] got {len(entries)} results")
-    return entries
+def query_arxiv(interest, max_results):
+    all_kw = interest.get("keywords", [])
+    num_batches = max(1, (len(all_kw) + KEYWORDS_PER_BATCH - 1) // KEYWORDS_PER_BATCH)
+    per_batch = max(1, -(-max_results // num_batches))  # ceil division
+    seen_ids = set()
+    all_entries = []
+
+    for start in range(0, len(all_kw), KEYWORDS_PER_BATCH):
+        if len(all_entries) >= max_results:
+            break
+        batch = all_kw[start:start + KEYWORDS_PER_BATCH]
+        query = build_query(batch)
+        params = {
+            "search_query": query,
+            "start": 0,
+            "max_results": min(per_batch, max_results - len(all_entries) + 2),  # +2 for filtering buffer
+            "sortBy": "submittedDate",
+            "sortOrder": "descending",
+        }
+        url = f"{ARXIV_API}?{urllib.parse.urlencode(params)}"
+        print(f"  [arXiv] {interest['name']}: batch [{start+1}-{min(start+KEYWORDS_PER_BATCH, len(all_kw))}]/{len(all_kw)} keywords → {params['max_results']} results")
+
+        for attempt in range(5):
+            resp = feedparser.parse(url)
+            status = resp.get("status")
+            if status == 429:
+                wait = (attempt + 1) * 20
+                print(f"  [arXiv] HTTP 429 (rate limit), retrying in {wait}s...")
+                time.sleep(wait)
+                continue
+            if status is not None and status >= 400:
+                print(f"  [WARNING] arXiv returned HTTP {status}")
+            entries = resp.get("entries", [])
+            new_count = 0
+            for e in entries:
+                eid = e.get("id", "")
+                if eid not in seen_ids:
+                    seen_ids.add(eid)
+                    all_entries.append(e)
+                    new_count += 1
+            print(f"  [arXiv] got {len(entries)} ({new_count} new), total unique: {len(all_entries)}")
+            break
+        else:
+            print(f"  [arXiv] FAILED after 5 retries")
+            continue
+
+        if start + KEYWORDS_PER_BATCH < len(all_kw):
+            time.sleep(3)
+
+    return all_entries
 
 # ──────────────────────────────────────────────
 # 3. 关键词后过滤 + 论文解析
@@ -149,29 +188,33 @@ def summarize_with_llm(paper, config):
     if len(paper["authors"]) > 8:
         authors_display += f" 等 ({len(paper['authors'])} 位)"
 
-    prompt = f"""你是一位资深的学术研究者，正在为个人知识库撰写论文笔记。请对以下论文进行详尽、专业的中文总结，方便日后快速回顾。严格按以下格式输出：
+    prompt = f"""你是一位资深的学术研究者，正在为个人知识库撰写论文笔记。请对以下论文进行详尽、专业的中文总结，写得充实、具体，使读者无需翻阅原文即可把握论文全貌。
 
-## 研究背景与动机
-（简要说明：这篇论文要解决什么问题？该领域当前面临什么瓶颈？为什么这个问题值得研究？）
+严格按以下格式输出，每个部分都必须写够内容，不要敷衍：
 
-## 核心贡献
-（用 4-6 句话清楚说明本文的核心发现或贡献是什么，重点突出创新之处）
+## 内容总结
+（对论文的整体概述，请写 200-400 字：
+- 这篇论文要解决什么问题？为什么值得研究？
+- 核心发现或贡献是什么？用了什么方法？
+- 得出了什么关键结论？有什么意外发现？
+- 该工作在领域中的定位和意义。）
 
 ## 方法详解
-（这是最重要的部分，请尽可能详细描述。
-- 论文提出了什么方法/框架/模型？
-- 方法的核心思想是什么？如果有关键公式或算法流程，请用自然语言描述其思想。
-- 方法由哪些模块/组件构成？各模块分别起什么作用？
-- 实验/计算是如何设计的？数据集、系统设定、关键参数等细节。
-请写得足够详细，使得读者无需翻阅原文就能把握方法的全貌。）
+（这是最重要的部分，请尽可能详细，写 300-600 字：
+- 论文提出了什么方法/框架/模型？其核心思想是什么？
+- 方法由哪些模块/组件构成？各模块分别起什么作用？各模块间如何协同？
+- 如果有关键公式或算法流程，请用自然语言描述其思想。
+- 实验/计算是如何设计的？使用了什么数据集或系统？关键参数有哪些？
+- 方法的创新之处在哪里？与已有方法相比有什么本质不同或优势？
+- 请写得足够详细，使读者能把握方法的全貌。）
 
 ## 关键结果
-（列出主要实验结果或理论发现，尽量包含具体数值。
-- 例如性能提升百分比、对比基线方法的优势、关键数据指标等。
-- 如果有多个实验，请逐项说明实验结果和发现。）
+（列出主要实验/理论发现，包含具体数值和对比数据：
+- 性能提升百分比、对比基线的优势、关键数据指标等。
+- 如有多个实验，请逐项说明实验设置和主要发现。）
 
 ## 局限与展望
-（客观指出方法的局限性和适用边界，以及未来可能的研究方向）
+（客观指出方法的局限性和适用边界，以及未来可能的研究方向。）
 
 论文信息：
 - 标题: {paper['title']}
@@ -262,11 +305,10 @@ def build_frontmatter(paper, tags):
     return "\n".join(lines)
 
 def generate_note(paper, config, interest_name):
-    obs_cfg = config["obsidian"]
-    tags = [obs_cfg.get("tag_prefix", "paper")]
+    tags = ["paper"]
     for cat in paper.get("categories", []):
-        tags.append(f"{obs_cfg.get('tag_prefix', 'paper')}/{cat.replace('.', '-')}")
-    tags.append(f"{obs_cfg.get('tag_prefix', 'paper')}/领域/{interest_name}")
+        tags.append(f"paper/{cat.replace('.', '-')}")
+    tags.append(f"paper/领域/{interest_name}")
 
     authors_display = ", ".join(paper["authors"][:5])
     if len(paper["authors"]) > 5:
@@ -323,62 +365,45 @@ def generate_note(paper, config, interest_name):
     return "\n".join(note)
 
 def extract_one_line_summary(llm_text):
-    """从 LLM 总结中提取一句话概要，用于每日综述。"""
     if not llm_text:
         return ""
-    pattern = r"核心贡献\n(.*?)(?=\n## |\Z)"
-    m = re.search(pattern, llm_text, re.DOTALL)
-    if m:
-        lines = m.group(1).strip().split("\n")
-        # 取第一个非空、非括号行
-        for line in lines:
-            clean = line.strip()
-            if clean and not clean.startswith("（") and len(clean) > 10:
-                # 去掉 markdown 格式
-                clean = re.sub(r"\*\*", "", clean)
-                return clean[:120]
-    # fallback: 取前两行
+    for label in ["内容总结", "核心贡献"]:
+        pattern = rf"{label}\n(.*?)(?=\n## |\Z)"
+        m = re.search(pattern, llm_text, re.DOTALL)
+        if m:
+            lines = m.group(1).strip().split("\n")
+            for line in lines:
+                clean = line.strip()
+                if clean and not clean.startswith("（") and len(clean) > 10:
+                    clean = re.sub(r"\*\*", "", clean)
+                    return clean[:150]
     lines = [l.strip() for l in llm_text.split("\n") if l.strip() and not l.startswith("#")]
-    return (lines[0][:120] + "...") if lines else ""
+    return (lines[0][:150] + "...") if lines else ""
 
 # ──────────────────────────────────────────────
 # 6. 每日综述生成
 # ──────────────────────────────────────────────
 def generate_daily_overview(date_str, saved_papers, overview_path, vault_path):
-    """
-    saved_papers: list of {title, note_path, interest_name, one_line_summary}
-    """
-    # 按领域分组
     groups = {}
     for p in saved_papers:
         groups.setdefault(p["interest_name"], []).append(p)
 
+    all_fields = list(groups.keys())
+    fields_str = "、".join(all_fields)
+
     lines = []
-    lines.append(f"# 文献综述 - {date_str}")
+    lines.append(f"# {date_str} 文献速览")
     lines.append("")
-    lines.append(f"> 自动生成于 {datetime.now().strftime('%Y-%m-%d %H:%M')}，共 {len(saved_papers)} 篇")
-    lines.append("")
-
-    table_of_contents = []
-    for name, papers in groups.items():
-        table_of_contents.append(f"- [{name} ({len(papers)}篇)](#{name.replace(' ', '-')})")
-    lines.extend(table_of_contents)
+    lines.append(f"共 {len(saved_papers)} 篇论文，涵盖 {fields_str} 等 {len(groups)} 个领域。")
     lines.append("")
 
     for name, papers in groups.items():
-        lines.append(f"## {name} ({len(papers)}篇)")
+        lines.append(f"## {name}")
         lines.append("")
-        for i, p in enumerate(papers, 1):
-            # 使用 Obsidian wikilink 格式 (相对路径去掉 .md)
+        for p in papers:
             rel = p["note_path"]
-            link_text = p["title"][:80]
-            lines.append(f"### {i}. {link_text}")
-            lines.append("")
-            lines.append(f"- **路径**：`{rel}`")
-            lines.append(f"- **概要**：{p['one_line_summary']}")
-            if p.get("arxiv_id"):
-                lines.append(f"- **arXiv**：[{p['arxiv_id']}]({p.get('link', 'https://arxiv.org/abs/' + p['arxiv_id'])})")
-            lines.append("")
+            summary = p["one_line_summary"] or p["title"][:80]
+            lines.append(f"- **{p['title']}**: {summary}: `{rel}`")
         lines.append("")
 
     overview_path.parent.mkdir(parents=True, exist_ok=True)
@@ -389,10 +414,12 @@ def generate_daily_overview(date_str, saved_papers, overview_path, vault_path):
 # 7. 主流程
 # ──────────────────────────────────────────────
 def main():
-    parser = argparse.ArgumentParser(description="arXiv Daily Fetcher v2")
+    parser = argparse.ArgumentParser(description="arXiv Daily Fetcher v3")
     parser.add_argument("--config", default=str(DEFAULT_CONFIG))
     parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--days-back", type=int, default=None)
+    parser.add_argument("--max-results", type=int, default=DEFAULT_MAX_RESULTS)
+    parser.add_argument("--days-back", type=int, default=DEFAULT_DAYS_BACK)
+    parser.add_argument("--pause", type=int, default=DEFAULT_PAUSE_SECONDS)
     args = parser.parse_args()
 
     config_path = Path(args.config)
@@ -405,19 +432,17 @@ def main():
     vault_path = Path(obs_cfg["vault_path"])
     today_str = datetime.now().strftime("%Y-%m-%d")
     target_root = vault_path / obs_cfg.get("target_folder", "Papers") / today_str
-    days_back = args.days_back or config["fetch"].get("days_back", 365)
-    pause = config["fetch"].get("pause_between_requests", 10)
 
     history_path = SCRIPT_DIR / "fetched_papers.json"
     history = load_history(history_path)
 
-    overview_path = target_root / "今日文献综述.md"
+    overview_path = target_root / f"{today_str}-文献速览.md"
 
     print(f"{'='*60}")
-    print(f"arXiv Daily Fetcher v2 — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    print(f"arXiv Daily Fetcher v3 — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     print(f"Vault: {vault_path}")
     print(f"Output: {target_root}")
-    print(f"Days back: {days_back}")
+    print(f"Max per interest: {args.max_results} | Days back: {args.days_back}")
     print(f"Interests: {len(config['interests'])}")
     print(f"{'='*60}")
 
@@ -433,7 +458,7 @@ def main():
         print(f"  {name}")
         print(f"{'─'*50}")
 
-        entries = query_arxiv(interest, config)
+        entries = query_arxiv(interest, args.max_results)
         if not entries:
             continue
 
@@ -444,7 +469,7 @@ def main():
             if not matches_keywords(entry, keywords):
                 continue
 
-            if not is_within_days(entry, days_back):
+            if not is_within_days(entry, args.days_back):
                 continue
 
             arxiv_id = paper["arxiv_id"]
@@ -491,9 +516,10 @@ def main():
                 "link": paper.get("link", ""),
             })
 
-            time.sleep(pause)
+            time.sleep(args.pause)
 
-        time.sleep(pause)
+        print(f"  [Wait] {args.pause * 2}s between interests...")
+        time.sleep(args.pause * 2)
 
     # 生成每日综述
     if saved_papers and not args.dry_run:
