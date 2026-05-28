@@ -1,0 +1,51 @@
+{
+  "2605.27162v1": {
+    "title": "Rapid estimation of synthesizability windows of inorganic materials from first principles",
+    "fetched_at": "2026-05-27T10:40:51.758492",
+    "file": "Papers\\2026-05-27\\催化与表面科学\\2026 - Tadge - Rapid estimation of synthesizability windows of inorganic materials from first.md",
+    "date": "2026-05-27",
+    "interest": "催化与表面科学"
+  },
+  "2605.27355v1": {
+    "title": "Alignment Tampering: How Reinforcement Learning from Human Feedback Is Exploited to Optimize Misaligned Biases",
+    "fetched_at": "2026-05-27T10:41:57.894932",
+    "file": "Papers\\2026-05-27\\强化学习与AI\\2026 - Hahm - Alignment Tampering- How Reinforcement Learning from Human Feedback Is.md",
+    "date": "2026-05-27",
+    "interest": "强化学习与AI"
+  },
+  "2605.26741v1": {
+    "title": "MatFormBench: A Benchmarking Evaluation Framework for Target-Driven Materials Formulation",
+    "fetched_at": "2026-05-27T10:42:36.815352",
+    "file": "Papers\\2026-05-27\\强化学习与AI\\2026 - Wu - MatFormBench- A Benchmarking Evaluation Framework for Target-Driven Materials.md",
+    "date": "2026-05-27",
+    "interest": "强化学习与AI"
+  },
+  "2605.27317v1": {
+    "title": "Shortest Path Problem with Subnormal Gaussian Fuzzy Costs",
+    "fetched_at": "2026-05-27T10:43:37.503997",
+    "file": "Papers\\2026-05-27\\全局优化与蒙特卡洛\\2026 - Moran - Shortest Path Problem with Subnormal Gaussian Fuzzy Costs.md",
+    "date": "2026-05-27",
+    "interest": "全局优化与蒙特卡洛"
+  },
+  "2605.27064v1": {
+    "title": "Flow-Based Global Proposals for Monte Carlo Sampling in SU(2) Lattice Gauge Theory",
+    "fetched_at": "2026-05-27T10:44:16.096421",
+    "file": "Papers\\2026-05-27\\全局优化与蒙特卡洛\\2026 - Nam - Flow-Based Global Proposals for Monte Carlo Sampling in SU(2) Lattice Gauge.md",
+    "date": "2026-05-27",
+    "interest": "全局优化与蒙特卡洛"
+  },
+  "2605.24489v1": {
+    "title": "TIGER: Text-Informed Generalized Enzyme-Reaction Retrieval",
+    "fetched_at": "2026-05-27T10:45:43.601286",
+    "file": "Papers\\2026-05-27\\反应动力学\\2026 - Zhang - TIGER- Text-Informed Generalized Enzyme-Reaction Retrieval.md",
+    "date": "2026-05-27",
+    "interest": "反应动力学"
+  },
+  "2605.27303v1": {
+    "title": "Point Spread Function Optimization for Communication-assisted UAV-borne MIMO TomoSAR",
+    "fetched_at": "2026-05-27T10:52:38.701437",
+    "file": "Papers\\2026-05-27\\全局优化与蒙特卡洛\\2026 - Fakharizadeh - Point Spread Function Optimization for Communication-assisted UAV-borne MIMO.md",
+    "date": "2026-05-27",
+    "interest": "全局优化与蒙特卡洛"
+  }
+}

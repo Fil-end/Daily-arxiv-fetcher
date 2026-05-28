@@ -1,4 +1,4 @@
-# ============================================================
+﻿# ============================================================
 # arXiv Daily Fetcher — Windows 定时任务安装脚本
 # 用法: 以管理员身份运行 PowerShell，然后执行此脚本
 #   powershell -ExecutionPolicy Bypass -File setup_scheduler.ps1
