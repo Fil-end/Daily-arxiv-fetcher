@@ -15,6 +15,7 @@ from pathlib import Path
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 import feedparser, yaml
+from http_transport import SESSION
 
 feedparser.USER_AGENT = "arXivDailyFetcher/3.0 (mailto:researcher@example.com)"
 
@@ -82,7 +83,16 @@ def query_arxiv(interest, max_results):
         print(f"  [arXiv] {interest['name']}: batch [{start+1}-{min(start+KEYWORDS_PER_BATCH, len(all_kw))}]/{len(all_kw)} keywords → {params['max_results']} results")
 
         for attempt in range(5):
-            resp = feedparser.parse(url)
+            from curated_fetcher import get
+            import requests
+            try:
+                with get(url) as response:
+                    resp = feedparser.parse(response.content)
+                if resp.get("bozo") and not resp.get("entries"):
+                    raise ValueError("Invalid arXiv feed")
+            except (requests.RequestException, ValueError) as exc:
+                print(f"  [arXiv] Batch failed: {type(exc).__name__}: {exc}")
+                break
             status = resp.get("status")
             if status == 429:
                 wait = (attempt + 1) * 20
@@ -248,7 +258,7 @@ def _call_openai(api_key, api_base, model, prompt, llm_cfg):
         "max_tokens": llm_cfg.get("max_tokens", 4000),
         "temperature": llm_cfg.get("temperature", 0.3),
     }
-    resp = requests.post(url, json=payload, headers=headers, timeout=180)
+    resp = SESSION.post(url, json=payload, headers=headers, timeout=180)
     resp.raise_for_status()
     return resp.json()["choices"][0]["message"]["content"]
 
@@ -257,7 +267,7 @@ def _call_anthropic(api_key, model, prompt, llm_cfg):
     url = "https://api.anthropic.com/v1/messages"
     headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01", "Content-Type": "application/json"}
     payload = {"model": model, "max_tokens": llm_cfg.get("max_tokens", 4000), "messages": [{"role": "user", "content": prompt}]}
-    resp = requests.post(url, json=payload, headers=headers, timeout=180)
+    resp = SESSION.post(url, json=payload, headers=headers, timeout=180)
     resp.raise_for_status()
     return resp.json()["content"][0]["text"]
 
@@ -265,7 +275,7 @@ def _call_ollama(api_base, model, prompt, llm_cfg):
     import requests
     url = f"{api_base.rstrip('/')}/api/generate" if api_base else "http://localhost:11434/api/generate"
     payload = {"model": model, "prompt": prompt, "stream": False, "options": {"temperature": llm_cfg.get("temperature", 0.3)}}
-    resp = requests.post(url, json=payload, timeout=300)
+    resp = SESSION.post(url, json=payload, timeout=300)
     resp.raise_for_status()
     return resp.json().get("response", "")
 
@@ -428,6 +438,8 @@ def main():
         sys.exit(1)
 
     config = load_config(config_path)
+    from http_transport import configure_network
+    configure_network(config)
     obs_cfg = config["obsidian"]
     vault_path = Path(obs_cfg["vault_path"])
     today_str = datetime.now().strftime("%Y-%m-%d")
@@ -534,4 +546,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    from curated_fetcher import main as curated_main
+    sys.exit(curated_main())

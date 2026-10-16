@@ -1,67 +1,70 @@
-# arXiv Daily Fetcher 简化配置
-# 只需提供领域名 + 少量关键词即可
+# ============================================================
+# arXiv Daily Fetcher 配置
+# 只需修改 interests 下的领域名和关键词即可开始使用
+# ============================================================
+
+network:
+  require_proxy: true
+  mihomo_profile: "C:/Users/Administrator/AppData/Roaming/mihomo-party/profiles/19f07204c91.yaml"
+
+selection:
+  daily_limit: 5
+  days_back: 14
+  candidates_per_query: 12
+  shortlist_limit: 18
+  fulltext_max_chars: 160000
+  min_score: 85
+  retain_above_score: 75
+  policy_version: 1
+  crossref_enabled: true
 
 interests:
-  - name: "催化与表面科学"
-    keywords:
-      - "heterogeneous catalysis"
-      - "DFT"
-      - "catalyst"
-      - "surface science"
-      - "adsorption"
-      - "transition state"
-      - "microkinetic"
-      - "H2O2"
-      - "hydrogen peroxide"
-
-  - name: "强化学习与AI"
-    keywords:
-      - "reinforcement learning"
-      - "deep reinforcement learning"
-      - "PPO"
-      - "policy gradient"
-      - "GNN"
-      - "graph neural network"
-      - "equivariant neural network"
-      - "material discovery"
-      - "inverse design"
-
-  - name: "全局优化与蒙特卡洛"
-    keywords:
-      - "global optimization"
-      - "basin hopping"
-      - "genetic algorithm"
-      - "particle swarm optimization"
-      - "stochastic surface walking"
-      - "Monte Carlo"
-      - "kinetic Monte Carlo"
-      - "Metropolis"
-
-  - name: "反应动力学"
-    keywords:
-      - "reaction kinetics"
-      - "reaction mechanism"
-      - "rate constant"
-      - "activation energy"
-      - "transition state theory"
-      - "reaction network"
-      - "microkinetic modeling"
+  - name: "Flow Matching与AI4Science"
+    focus: "Flow matching的实质方法创新及其在分子、材料、物理、化学和科学模拟中的应用；排除仅换模型的常规应用。"
+    queries:
+      - '(all:"flow matching" OR all:"rectified flow") AND (all:molecular OR all:materials OR all:physics OR all:chemistry OR all:scientific OR all:protein)'
+  - name: "前沿Agent"
+    focus: "广泛关注Agent的架构、训练、推理、规划、记忆、工具使用、环境与harness、评价、自我改进、持续学习、多智能体和科学发现；harness及self-improving只是例子，不是范围限制。"
+    queries:
+      - '(all:agent OR all:agentic) AND (cat:cs.AI OR cat:cs.CL OR cat:cs.LG OR cat:cs.MA)'
+      - '(all:"self-improving" OR all:"self-evolving" OR all:harness OR all:"agent memory" OR all:"tool use" OR all:"long-horizon") AND (all:agent OR all:agentic)'
+  - name: "强化学习与AI4Science"
+    focus: "强化学习用于科学发现、实验决策、分子材料设计、化学反应和物理模拟，要求科学问题或学习方法有实质推进。"
+    queries:
+      - 'all:"reinforcement learning" AND (all:scientific OR all:molecular OR all:materials OR all:chemistry OR all:physics OR all:catalysis OR all:protein)'
+  - name: "原子结构全局探索"
+    focus: "传统全局优化算法在原子结构、团簇、晶体、表面和吸附结构探索中的应用与改进；关注搜索机理、效率、完备性和势能面探索。"
+    queries:
+      - '(all:"global optimization" OR all:"basin hopping" OR all:"minima hopping" OR all:"genetic algorithm" OR all:"particle swarm" OR all:"stochastic surface walking" OR all:"simulated annealing") AND (all:atomistic OR all:crystal OR all:cluster OR all:"structure prediction" OR all:"potential energy surface")'
+  - name: "MLIP框架与深度思考"
+    focus: "MLIP的框架改进、表达能力、物理约束、长程相互作用、可迁移性、可靠性和系统性观点；关注Gabor Csanyi、MACE等相关团队，但不以名气代替内容证据，也不排除其他团队。"
+    queries:
+      - '(all:"machine learning interatomic" OR all:"machine-learned interatomic" OR all:"foundation interatomic" OR all:"neural network potential" OR all:"atomic cluster expansion")'
+      - '(au:Csanyi OR all:MACE) AND (all:potential OR all:atomistic OR all:interatomic)'
+  - name: "AI4Science前沿思想与方法"
+    focus: "AI4Science具有普遍意义的新思想、科学推理、新方法、科学基础模型和发现范式；排除一般性能刷榜和浅层应用拼装。"
+    queries:
+      - '(all:"AI for science" OR all:"AI4Science" OR all:"scientific discovery" OR all:"scientific reasoning" OR all:"scientific foundation model" OR all:"autonomous science")'
+  - name: "反应机理与选择性动力学"
+    focus: "传统化学机理的实质突破：H2O2合成、丙烯环氧化中选择性与反应速率的权衡、Haber-Bosch合成氨、水煤气变换WGS等。需区分作者宣称与证据；重视活性位、竞争路径、覆盖度、工况、动力学和实验或高可信计算交叉验证。"
+    queries:
+      - '(all:"hydrogen peroxide" OR all:"propylene epoxidation" OR all:"Haber-Bosch" OR all:"ammonia synthesis" OR all:"water gas shift" OR all:"water-gas shift") AND (all:mechanism OR all:kinetics OR all:selectivity OR all:catalysis)'
+    crossref_queries:
+      - "hydrogen peroxide synthesis mechanism catalysis"
+      - "propylene epoxidation selectivity kinetics mechanism"
+      - "Haber Bosch ammonia synthesis mechanism"
+      - "water gas shift reaction mechanism"
 
 obsidian:
-  vault_path: "D:\\ECUST\\Filend's Knowledge Base"
+  vault_path: "D:\\ECUST\\Filend_Knowledge_Base"
   target_folder: "Papers"
-  tag_prefix: "paper"
-
-fetch:
-  max_results: 20
-  days_back: 365
-  pause_between_requests: 10
 
 llm:
   enabled: true
-  provider: "openai"
-  api_key: "Your api key here"
-  api_base: "https://api.deepseek.com/v1"
-  model: "deepseek-chat"
-  max_tokens: 4000
+  provider: "openai-responses"
+  api_key_file: "D:/ECUST/scripts/codex/codex-zzy.ps1"
+  api_key_variable: "OPENAI_API_KEY"
+  api_base: "https://api.gonggroup.in/v1"
+  model: "gpt-6.1-sol"
+  max_tokens: 10000
   temperature: 0.3
